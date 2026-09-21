@@ -9,8 +9,7 @@ export async function POST(request: NextRequest) {
   try {
     // In production, require either an active Admin session or matching SEED_SECRET
     if (process.env.NODE_ENV === "production") {
-      const url = new URL(request.url);
-      const secretParam = url.searchParams.get("secret");
+      const secretParam = request.nextUrl.searchParams.get("secret");
       const secretHeader = request.headers.get("x-seed-secret");
       const configuredSecret = process.env.SEED_SECRET;
 
