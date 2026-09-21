@@ -20,7 +20,9 @@ import {
 import { StatusBadge } from "@/components/ui/StatusBadge";
 import { Button } from "@/components/ui/Button";
 import { QRCodeModal } from "@/components/ui/QRCodeModal";
+import { LiveBadge } from "@/components/ui/LiveBadge";
 import { useToast } from "@/components/ui/Toast";
+import { useLiveSync } from "@/hooks/useLiveSync";
 import { formatDate, formatTime } from "@/lib/utils";
 
 interface AttendanceRecordItem {
@@ -81,21 +83,24 @@ export default function SessionDetailPage({
       const data = await res.json();
       if (data.success) {
         setSession(data.data);
-      } else {
-        toast(data.error || "Failed to load session", "error");
       }
     } catch (err) {
       console.error("Fetch session detail error:", err);
-      toast("Error loading session details", "error");
     } finally {
       setIsLoading(false);
       setIsRefreshing(false);
     }
-  }, [sessionId, toast]);
+  }, [sessionId]);
 
-  useEffect(() => {
-    fetchSessionDetails();
-  }, [fetchSessionDetails]);
+  // Real-time live auto sync for this session
+  const { isLiveConnected, lastUpdated, refreshNow } = useLiveSync(fetchSessionDetails, {
+    intervalMs: 2500,
+    onEvent: (event) => {
+      if (event.type === "CHECKIN") {
+        toast(`🟢 Checked In: ${event.studentName} (${event.studentId})`, "success");
+      }
+    },
+  });
 
   const handleToggleStatus = async (newStatus: "upcoming" | "open" | "closed") => {
     try {
@@ -107,7 +112,7 @@ export default function SessionDetailPage({
       const data = await res.json();
       if (res.ok) {
         toast(`Session status updated to ${newStatus.toUpperCase()}`, "success");
-        fetchSessionDetails();
+        refreshNow();
       } else {
         toast(data.error || "Failed to update status", "error");
       }
@@ -177,6 +182,7 @@ export default function SessionDetailPage({
           <div className="space-y-2">
             <div className="flex items-center gap-3 flex-wrap">
               <StatusBadge status={session.status} />
+              <LiveBadge isLive={isLiveConnected} lastUpdated={lastUpdated} />
               <span className="text-xs text-slate-500 dark:text-slate-400 flex items-center gap-1">
                 <Calendar className="w-3.5 h-3.5 text-slate-400" />
                 {formatDate(session.date)}

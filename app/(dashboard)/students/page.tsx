@@ -16,7 +16,9 @@ import {
 } from "lucide-react";
 import { Button } from "@/components/ui/Button";
 import { StudentModal, StudentData } from "@/components/students/StudentModal";
+import { LiveBadge } from "@/components/ui/LiveBadge";
 import { useToast } from "@/components/ui/Toast";
+import { useLiveSync } from "@/hooks/useLiveSync";
 
 interface EnrichedStudent extends StudentData {
   _id: string;
@@ -47,23 +49,21 @@ export default function StudentsPage() {
       }
     } catch (err) {
       console.error("Fetch students error:", err);
-      toast("Failed to load students", "error");
     } finally {
       setIsLoading(false);
       setIsRefreshing(false);
     }
-  }, [search, toast]);
+  }, [search]);
 
-  useEffect(() => {
-    if (!search) {
-      fetchStudents();
-      return;
-    }
-    const timer = setTimeout(() => {
-      fetchStudents();
-    }, 250);
-    return () => clearTimeout(timer);
-  }, [fetchStudents, search]);
+  // Real-time live auto sync for students
+  const { isLiveConnected, lastUpdated, refreshNow } = useLiveSync(fetchStudents, {
+    intervalMs: 3000,
+    onEvent: (event) => {
+      if (event.type === "STUDENT_CREATED") {
+        toast(`👤 New Student Registered: ${event.studentName} (${event.studentId})`, "info");
+      }
+    },
+  });
 
   const handleDelete = async (studentId: string, fullName: string) => {
     if (
@@ -79,7 +79,7 @@ export default function StudentsPage() {
       const data = await res.json();
       if (res.ok) {
         toast("Student record removed successfully", "success");
-        fetchStudents();
+        refreshNow();
       } else {
         toast(data.error || "Failed to delete student", "error");
       }
@@ -96,6 +96,8 @@ export default function StudentsPage() {
           <div className="flex items-center gap-2 text-xs font-semibold text-blue-600 dark:text-blue-400 uppercase tracking-wider">
             <GraduationCap className="w-3.5 h-3.5" />
             <span>Cohort Directory</span>
+            <span>•</span>
+            <LiveBadge isLive={isLiveConnected} lastUpdated={lastUpdated} />
           </div>
           <h1 className="text-2xl sm:text-3xl font-extrabold text-slate-900 dark:text-white tracking-tight mt-1">
             Student Management
@@ -111,7 +113,7 @@ export default function StudentsPage() {
             size="sm"
             onClick={() => {
               setIsRefreshing(true);
-              fetchStudents();
+              refreshNow();
             }}
             isLoading={isRefreshing}
           >

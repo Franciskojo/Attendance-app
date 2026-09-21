@@ -14,6 +14,7 @@ import {
   StoredUser,
 } from "./store";
 import bcrypt from "bcryptjs";
+import { broadcastLiveEvent } from "./events";
 
 function generateSlug(title: string): string {
   const cleanTitle = title
@@ -25,16 +26,14 @@ function generateSlug(title: string): string {
   return `${cleanTitle}-${randomSuffix}`;
 }
 
-let mongoAvailable: boolean | null = null;
-
 async function isMongoAvailable(): Promise<boolean> {
-  if (mongoAvailable === true) return true;
   try {
+    if (mongoose.connection && mongoose.connection.readyState === 1) {
+      return true;
+    }
     const conn = await connectToDatabase();
-    mongoAvailable = !!conn && conn.connection.readyState === 1;
-    return mongoAvailable;
+    return !!conn && conn.connection.readyState === 1;
   } catch {
-    mongoAvailable = false;
     return false;
   }
 }
@@ -69,6 +68,36 @@ export async function getUserByEmail(email: string): Promise<StoredUser | null> 
 }
 
 // ==================== STUDENTS ====================
+export async function getStudentByStudentId(studentId: string): Promise<StoredStudent | null> {
+  const normalizedId = studentId.toUpperCase().trim();
+  const isMongo = await isMongoAvailable();
+  if (isMongo) {
+    try {
+      const student = await Student.findOne({ studentId: normalizedId }).lean();
+      if (student) {
+        return {
+          _id: student._id.toString(),
+          studentId: student.studentId,
+          fullName: student.fullName,
+          email: student.email || "",
+          phone: student.phone || "",
+          cohort: student.cohort || "Cohort 1",
+          createdAt: student.createdAt ? new Date(student.createdAt).toISOString() : new Date().toISOString(),
+          updatedAt: student.updatedAt ? new Date(student.updatedAt).toISOString() : new Date().toISOString(),
+        };
+      }
+    } catch {
+      // Fallback
+    }
+  }
+
+  const db = loadDatabase();
+  const student = db.students.find(
+    (s) => s.studentId.toUpperCase() === normalizedId
+  );
+  return student || null;
+}
+
 export async function getStudentsList(search = "", cohort = "") {
   const isMongo = await isMongoAvailable();
   if (isMongo) {
@@ -95,11 +124,11 @@ export async function getStudentsList(search = "", cohort = "") {
         _id: s._id.toString(),
         studentId: s.studentId,
         fullName: s.fullName,
-        email: s.email,
-        phone: s.phone,
-        cohort: s.cohort,
+        email: s.email || "",
+        phone: s.phone || "",
+        cohort: s.cohort || "Cohort 1",
         attendanceCount: countMap.get(s.studentId) || 0,
-        createdAt: s.createdAt,
+        createdAt: s.createdAt ? new Date(s.createdAt).toISOString() : new Date().toISOString(),
       }));
     } catch {
       // Fallback to store
@@ -141,12 +170,16 @@ export async function createStudentData(data: {
   phone?: string;
   cohort?: string;
 }): Promise<StoredStudent> {
+  const normalizedId = data.studentId.toUpperCase().trim();
   const isMongo = await isMongoAvailable();
   if (isMongo) {
     try {
-      const existing = await Student.findOne({ studentId: data.studentId });
-      if (existing) throw new Error(`Student ID ${data.studentId} already exists`);
-      const student = await Student.create(data);
+      const existing = await Student.findOne({ studentId: normalizedId });
+      if (existing) throw new Error(`Student ID ${normalizedId} already exists`);
+      const student = await Student.create({
+        ...data,
+        studentId: normalizedId,
+      });
       return {
         _id: student._id.toString(),
         studentId: student.studentId,
@@ -164,15 +197,15 @@ export async function createStudentData(data: {
 
   const db = loadDatabase();
   const existing = db.students.find(
-    (s) => s.studentId.toUpperCase() === data.studentId.toUpperCase()
+    (s) => s.studentId.toUpperCase() === normalizedId
   );
-  if (existing) throw new Error(`Student ID ${data.studentId} already exists`);
+  if (existing) throw new Error(`Student ID ${normalizedId} already exists`);
 
   const now = new Date().toISOString();
   const newStudent: StoredStudent = {
     _id: `stu_${Date.now()}`,
-    studentId: data.studentId.toUpperCase(),
-    fullName: data.fullName,
+    studentId: normalizedId,
+    fullName: data.fullName.trim(),
     email: data.email || "",
     phone: data.phone || "",
     cohort: data.cohort || "Cohort 1",
@@ -180,8 +213,14 @@ export async function createStudentData(data: {
     updatedAt: now,
   };
 
-  db.students.push(newStudent);
+    db.students.push(newStudent);
   saveDatabase(db);
+  broadcastLiveEvent({
+    type: "STUDENT_CREATED",
+    timestamp: now,
+    studentId: normalizedId,
+    studentName: data.fullName.trim(),
+  });
   return newStudent;
 }
 
@@ -194,6 +233,12 @@ export async function updateStudentData(id: string, data: Partial<StoredStudent>
         : { studentId: id };
       const student = await Student.findOneAndUpdate(filter, data, { new: true }).lean();
       if (student) {
+        broadcastLiveEvent({
+          type: "STUDENT_CREATED",
+          timestamp: new Date().toISOString(),
+          studentId: student.studentId,
+          studentName: student.fullName,
+        });
         return {
           _id: student._id.toString(),
           studentId: student.studentId,
@@ -220,6 +265,12 @@ export async function updateStudentData(id: string, data: Partial<StoredStudent>
     updatedAt: new Date().toISOString(),
   };
   saveDatabase(db);
+  broadcastLiveEvent({
+    type: "STUDENT_CREATED",
+    timestamp: new Date().toISOString(),
+    studentId: db.students[idx].studentId,
+    studentName: db.students[idx].fullName,
+  });
   return db.students[idx];
 }
 
@@ -231,6 +282,11 @@ export async function deleteStudentData(id: string) {
         ? { $or: [{ _id: id }, { studentId: id }] }
         : { studentId: id };
       await Student.findOneAndDelete(filter);
+      broadcastLiveEvent({
+        type: "STUDENT_DELETED",
+        timestamp: new Date().toISOString(),
+        studentId: id,
+      });
       return true;
     } catch {
       // Fallback
@@ -240,6 +296,11 @@ export async function deleteStudentData(id: string) {
   const db = loadDatabase();
   db.students = db.students.filter((s) => s._id !== id && s.studentId !== id);
   saveDatabase(db);
+  broadcastLiveEvent({
+    type: "STUDENT_DELETED",
+    timestamp: new Date().toISOString(),
+    studentId: id,
+  });
   return true;
 }
 
@@ -327,8 +388,8 @@ export async function getSessionDetails(idOrSlug: string) {
           .sort({ checkedInAt: -1 })
           .lean();
         const allStudents = await Student.find().lean();
-        const checkedInIds = new Set(records.map((r) => r.studentId));
-        const absentStudents = allStudents.filter((s) => !checkedInIds.has(s.studentId));
+        const checkedInIds = new Set(records.map((r) => r.studentId.toUpperCase()));
+        const absentStudents = allStudents.filter((s) => !checkedInIds.has(s.studentId.toUpperCase()));
 
         const presentCount = records.length;
         const totalStudents = allStudents.length;
@@ -384,8 +445,8 @@ export async function getSessionDetails(idOrSlug: string) {
     .filter((r) => r.sessionId === session._id)
     .sort((a, b) => new Date(b.checkedInAt).getTime() - new Date(a.checkedInAt).getTime());
 
-  const checkedInIds = new Set(records.map((r) => r.studentId));
-  const absentStudents = db.students.filter((s) => !checkedInIds.has(s.studentId));
+  const checkedInIds = new Set(records.map((r) => r.studentId.toUpperCase()));
+  const absentStudents = db.students.filter((s) => !checkedInIds.has(s.studentId.toUpperCase()));
 
   const totalStudents = db.students.length;
   const presentCount = records.length;
@@ -452,6 +513,12 @@ export async function createSessionData(data: {
 
   db.sessions.unshift(newSession);
   saveDatabase(db);
+  broadcastLiveEvent({
+    type: "SESSION_CREATED",
+    timestamp: now,
+    sessionId: newSession._id,
+    sessionSlug: newSession.slug,
+  });
   return newSession;
 }
 
@@ -469,6 +536,12 @@ export async function updateSessionData(
         new: true,
       }).lean();
       if (updated) {
+        broadcastLiveEvent({
+          type: "SESSION_UPDATED",
+          timestamp: new Date().toISOString(),
+          sessionId: updated._id.toString(),
+          sessionSlug: updated.slug,
+        });
         return {
           _id: updated._id.toString(),
           title: updated.title,
@@ -500,6 +573,12 @@ export async function updateSessionData(
     updatedAt: new Date().toISOString(),
   };
   saveDatabase(db);
+  broadcastLiveEvent({
+    type: "SESSION_UPDATED",
+    timestamp: new Date().toISOString(),
+    sessionId: db.sessions[idx]._id,
+    sessionSlug: db.sessions[idx].slug,
+  });
   return db.sessions[idx];
 }
 
@@ -513,6 +592,12 @@ export async function deleteSessionData(idOrSlug: string) {
       const session = await AttendanceSession.findOneAndDelete(query);
       if (session) {
         await AttendanceRecord.deleteMany({ sessionId: session._id });
+        broadcastLiveEvent({
+          type: "SESSION_DELETED",
+          timestamp: new Date().toISOString(),
+          sessionId: session._id.toString(),
+          sessionSlug: session.slug,
+        });
         return true;
       }
     } catch {
@@ -529,6 +614,12 @@ export async function deleteSessionData(idOrSlug: string) {
   db.sessions = db.sessions.filter((s) => s._id !== session._id);
   db.records = db.records.filter((r) => r.sessionId !== session._id);
   saveDatabase(db);
+  broadcastLiveEvent({
+    type: "SESSION_DELETED",
+    timestamp: new Date().toISOString(),
+    sessionId: session._id,
+    sessionSlug: session.slug,
+  });
   return true;
 }
 
@@ -550,41 +641,53 @@ export async function submitCheckIn(data: {
     );
   }
 
-  const db = loadDatabase();
-  let student = db.students.find(
-    (s) => s.studentId.toUpperCase() === data.studentId.toUpperCase()
-  );
+  const normalizedStudentId = data.studentId.toUpperCase().trim();
 
-  let resolvedName = student ? student.fullName : data.fullName;
+  // 1. Look up student across MongoDB Atlas & local store
+  const student = await getStudentByStudentId(normalizedStudentId);
 
+  // 2. Enforce strict registration check: student MUST be pre-registered
   if (!student) {
-    if (!data.fullName || data.fullName.trim().length < 2) {
-      throw new Error("First-time check-in requires Full Name");
-    }
-    student = await createStudentData({
-      studentId: data.studentId.toUpperCase(),
-      fullName: data.fullName.trim(),
-      cohort: "Cohort 1",
-    });
-    resolvedName = student.fullName;
+    throw new Error(
+      `Student ID (${normalizedStudentId}) is not registered in the cohort directory. Please contact your Course Representative to be added before recording attendance.`
+    );
   }
 
-  // Duplicate attendance check (sessionId + studentId)
-  const existingRecord = db.records.find(
+  const resolvedName = student.fullName;
+
+  // 3. Duplicate attendance check (sessionId + studentId)
+  const isMongo = await isMongoAvailable();
+  if (isMongo && mongoose.Types.ObjectId.isValid(session._id)) {
+    const existingRecord = await AttendanceRecord.findOne({
+      sessionId: session._id,
+      studentId: normalizedStudentId,
+    });
+
+    if (existingRecord) {
+      const err = new Error(
+        `Attendance already recorded for Student ID (${normalizedStudentId}). Duplicate check-ins are not permitted.`
+      );
+      (err as { isDuplicate?: boolean }).isDuplicate = true;
+      throw err;
+    }
+  }
+
+  const db = loadDatabase();
+  const existingInStore = db.records.find(
     (r) =>
       r.sessionId === session._id &&
-      r.studentId.toUpperCase() === data.studentId.toUpperCase()
+      r.studentId.toUpperCase() === normalizedStudentId
   );
 
-  if (existingRecord) {
+  if (existingInStore) {
     const err = new Error(
-      `Attendance already recorded for Student ID (${data.studentId.toUpperCase()}). Duplicate check-ins are not permitted.`
+      `Attendance already recorded for Student ID (${normalizedStudentId}). Duplicate check-ins are not permitted.`
     );
     (err as { isDuplicate?: boolean }).isDuplicate = true;
     throw err;
   }
 
-  // Determine late status
+  // 4. Determine late status (15 minutes grace period)
   const now = new Date();
   let status: "present" | "late" = "present";
   if (session.startTime && session.date) {
@@ -596,8 +699,33 @@ export async function submitCheckIn(data: {
     }
   }
 
-  const newRecord: StoredRecord = {
-    _id: `rec_${Date.now()}`,
+  // 5. Create AttendanceRecord in MongoDB Atlas
+  let recordId = `rec_${Date.now()}`;
+  if (isMongo && mongoose.Types.ObjectId.isValid(session._id)) {
+    try {
+      const mongoRecord = await AttendanceRecord.create({
+        sessionId: session._id,
+        studentId: student.studentId,
+        studentName: resolvedName || student.fullName,
+        checkedInAt: now,
+        status,
+        deviceInfo: data.deviceInfo || "",
+      });
+      recordId = mongoRecord._id.toString();
+    } catch (e: unknown) {
+      if ((e as { code?: number }).code === 11000) {
+        const err = new Error(
+          `Attendance already recorded for Student ID (${normalizedStudentId}). Duplicate check-ins are not permitted.`
+        );
+        (err as { isDuplicate?: boolean }).isDuplicate = true;
+        throw err;
+      }
+    }
+  }
+
+  // 6. Mirror to JSON store for fallback
+  const newStoreRecord: StoredRecord = {
+    _id: recordId,
     sessionId: session._id,
     studentId: student.studentId,
     studentName: resolvedName || student.fullName,
@@ -608,22 +736,168 @@ export async function submitCheckIn(data: {
     updatedAt: now.toISOString(),
   };
 
-  db.records.push(newRecord);
+  db.records.push(newStoreRecord);
   saveDatabase(db);
 
+  broadcastLiveEvent({
+    type: "CHECKIN",
+    timestamp: now.toISOString(),
+    sessionId: session._id,
+    sessionSlug: session.slug,
+    studentId: student.studentId,
+    studentName: resolvedName || student.fullName,
+    data: {
+      status,
+      checkedInAt: now.toISOString(),
+      sessionTitle: session.title,
+    },
+  });
+
   return {
-    recordId: newRecord._id,
-    studentId: newRecord.studentId,
-    studentName: newRecord.studentName,
-    checkedInAt: newRecord.checkedInAt,
-    status: newRecord.status,
+    recordId,
+    studentId: student.studentId,
+    studentName: resolvedName || student.fullName,
+    checkedInAt: now.toISOString(),
+    status,
     sessionTitle: session.title,
     sessionDate: session.date,
   };
 }
 
+export async function registerAndCheckIn(data: {
+  sessionSlug: string;
+  studentId: string;
+  fullName: string;
+  email?: string;
+  phone?: string;
+  cohort?: string;
+  deviceInfo?: string;
+}) {
+  const normalizedId = data.studentId.toUpperCase().trim();
+
+  // 1. Look up if student already exists
+  let student = await getStudentByStudentId(normalizedId);
+
+  // 2. If student does not exist, create the official student record
+  if (!student) {
+    if (!data.fullName || data.fullName.trim().length < 2) {
+      throw new Error("Full name is required for student registration");
+    }
+    student = await createStudentData({
+      studentId: normalizedId,
+      fullName: data.fullName.trim(),
+      email: data.email?.trim() || "",
+      phone: data.phone?.trim() || "",
+      cohort: data.cohort?.trim() || "Cohort 1",
+    });
+  }
+
+  // 3. Submit check-in for the session
+  return await submitCheckIn({
+    sessionSlug: data.sessionSlug,
+    studentId: student.studentId,
+    fullName: student.fullName,
+    deviceInfo: data.deviceInfo,
+  });
+}
+
 // ==================== ANALYTICS ====================
 export async function getAnalyticsMetrics() {
+  const isMongo = await isMongoAvailable();
+  if (isMongo) {
+    try {
+      const [totalStudents, totalSessions, sessions, students, records] = await Promise.all([
+        Student.countDocuments(),
+        AttendanceSession.countDocuments(),
+        AttendanceSession.find().sort({ date: -1 }).lean(),
+        Student.find().lean(),
+        AttendanceRecord.find().lean(),
+      ]);
+
+      const todayStr = new Date().toISOString().split("T")[0];
+      const todaySessions = sessions.filter((s) => s.date === todayStr);
+      const todaySessionIds = new Set(todaySessions.map((s) => s._id.toString()));
+
+      const todayAttendanceCount = records.filter((r) =>
+        todaySessionIds.has(r.sessionId.toString())
+      ).length;
+
+      const countMap = new Map<string, { total: number; late: number }>();
+      records.forEach((r) => {
+        const sid = r.sessionId.toString();
+        const current = countMap.get(sid) || { total: 0, late: 0 };
+        current.total += 1;
+        if (r.status === "late") current.late += 1;
+        countMap.set(sid, current);
+      });
+
+      let totalActualAttendance = 0;
+      const sessionTrends = sessions.map((s) => {
+        const sid = s._id.toString();
+        const stats = countMap.get(sid) || { total: 0, late: 0 };
+        const present = stats.total;
+        const late = stats.late;
+        const absent = Math.max(0, totalStudents - present);
+        const rate = totalStudents > 0 ? Math.round((present / totalStudents) * 100) : 0;
+        totalActualAttendance += present;
+
+        return {
+          id: sid,
+          name: s.title.length > 20 ? s.title.slice(0, 18) + "..." : s.title,
+          fullTitle: s.title,
+          date: s.date,
+          status: s.status,
+          present,
+          absent,
+          late,
+          attendanceRate: rate,
+        };
+      });
+
+      const totalPossible = totalSessions * totalStudents;
+      const overallAttendanceRate =
+        totalPossible > 0 ? Math.round((totalActualAttendance / totalPossible) * 100) : 0;
+
+      const studentCountMap = new Map<string, number>();
+      records.forEach((r) => {
+        studentCountMap.set(r.studentId, (studentCountMap.get(r.studentId) || 0) + 1);
+      });
+
+      const studentsWithRates = students.map((s) => {
+        const attended = studentCountMap.get(s.studentId) || 0;
+        const rate = totalSessions > 0 ? Math.round((attended / totalSessions) * 100) : 0;
+        return {
+          studentId: s.studentId,
+          fullName: s.fullName,
+          email: s.email || "",
+          attended,
+          totalSessions,
+          rate,
+        };
+      });
+
+      const topStudents = [...studentsWithRates]
+        .sort((a, b) => b.rate - a.rate)
+        .slice(0, 5);
+
+      const atRiskStudents = studentsWithRates.filter(
+        (s) => totalSessions >= 2 && s.rate < 75
+      );
+
+      return {
+        totalStudents,
+        totalSessions,
+        todayAttendanceCount,
+        overallAttendanceRate,
+        sessionTrends,
+        topStudents,
+        atRiskStudents,
+      };
+    } catch {
+      // Fallback
+    }
+  }
+
   const db = loadDatabase();
   const totalStudents = db.students.length;
   const totalSessions = db.sessions.length;

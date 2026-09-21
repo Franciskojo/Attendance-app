@@ -24,7 +24,9 @@ import {
 } from "lucide-react";
 import { StatCard } from "@/components/ui/StatCard";
 import { Button } from "@/components/ui/Button";
+import { LiveBadge } from "@/components/ui/LiveBadge";
 import { useToast } from "@/components/ui/Toast";
+import { useLiveSync } from "@/hooks/useLiveSync";
 
 interface SessionTrend {
   id: string;
@@ -63,26 +65,25 @@ export default function AnalyticsPage() {
   const [isLoading, setIsLoading] = useState(true);
   const [isRefreshing, setIsRefreshing] = useState(false);
 
-  const fetchAnalytics = async () => {
+  const fetchAnalytics = React.useCallback(async () => {
     try {
       const res = await fetch("/api/analytics");
       const json = await res.json();
       if (json.success) {
         setData(json.data);
-      } else {
-        toast(json.error || "Failed to load analytics", "error");
       }
     } catch {
-      toast("Error fetching analytics", "error");
+      // Ignore network errors
     } finally {
       setIsLoading(false);
       setIsRefreshing(false);
     }
-  };
-
-  useEffect(() => {
-    fetchAnalytics();
   }, []);
+
+  // Live real-time auto sync for analytics
+  const { isLiveConnected, lastUpdated, refreshNow } = useLiveSync(fetchAnalytics, {
+    intervalMs: 4000,
+  });
 
   if (isLoading) {
     return (
@@ -107,6 +108,8 @@ export default function AnalyticsPage() {
           <div className="flex items-center gap-2 text-xs font-semibold text-blue-600 dark:text-blue-400 uppercase tracking-wider">
             <BarChart3 className="w-3.5 h-3.5" />
             <span>Cohort Performance Intelligence</span>
+            <span>•</span>
+            <LiveBadge isLive={isLiveConnected} lastUpdated={lastUpdated} />
           </div>
           <h1 className="text-2xl sm:text-3xl font-extrabold text-slate-900 dark:text-white tracking-tight mt-1">
             Attendance Analytics & Trends
@@ -121,7 +124,7 @@ export default function AnalyticsPage() {
           size="sm"
           onClick={() => {
             setIsRefreshing(true);
-            fetchAnalytics();
+            refreshNow();
           }}
           isLoading={isRefreshing}
         >

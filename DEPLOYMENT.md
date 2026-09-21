@@ -92,11 +92,11 @@ Because Vercel serverless functions do not persist local disk files across invoc
 
 | Key | Example Value | Description |
 | :--- | :--- | :--- |
-| `MONGODB_URI` | `mongodb+srv://Attendancedb:PASSWORD@attendancedb.t56fghx.mongodb.net/Attendancedb?retryWrites=true&w=majority` | Your MongoDB Atlas connection URI |
-| `NEXTAUTH_SECRET` | `a8f5b497e8717d91e604f3261a3d0fbe804a5840d2109e25d21a50b8655cf311` | Secret for signing JWT sessions (see below to generate) |
+| `MONGODB_URI` | `mongodb+srv://<username>:<password>@<your-cluster>.mongodb.net/<dbname>?retryWrites=true&w=majority` | Your MongoDB Atlas connection URI |
+| `NEXTAUTH_SECRET` | `<your-32-byte-secret-key>` | Secret for signing JWT sessions (see below to generate) |
 | `NEXTAUTH_URL` | `https://your-app-name.vercel.app` | The production URL assigned by Vercel |
 | `NEXT_PUBLIC_APP_URL` | `https://your-app-name.vercel.app` | Public URL used for generating student QR check-in links |
-| `SEED_SECRET` | `my_secure_seed_token_2026` *(optional)* | Secret token to trigger `/api/seed` in production |
+| `SEED_SECRET` | `<optional_custom_secret>` *(optional)* | Secret token to trigger `/api/seed` in production |
 
 > 💡 **Tip for generating `NEXTAUTH_SECRET`:**
 > Run this command in any terminal to generate a secure 32-byte base64 string:

@@ -21,7 +21,9 @@ import { StatusBadge } from "@/components/ui/StatusBadge";
 import { Button } from "@/components/ui/Button";
 import { QRCodeModal } from "@/components/ui/QRCodeModal";
 import { CreateSessionModal } from "@/components/sessions/CreateSessionModal";
+import { LiveBadge } from "@/components/ui/LiveBadge";
 import { useToast } from "@/components/ui/Toast";
+import { useLiveSync } from "@/hooks/useLiveSync";
 import { formatDate } from "@/lib/utils";
 
 interface DashboardData {
@@ -95,25 +97,32 @@ export default function DashboardPage() {
       }
     } catch (err) {
       console.error("Dashboard fetch error:", err);
-      toast("Could not connect to database. Make sure it is seeded.", "error");
     } finally {
       setIsLoading(false);
       setIsRefreshing(false);
     }
-  }, [toast]);
+  }, []);
+
+  // Set up live real-time auto-sync
+  const { isLiveConnected, lastUpdated, refreshNow } = useLiveSync(fetchData, {
+    intervalMs: 3000,
+    onEvent: (event) => {
+      if (event.type === "CHECKIN") {
+        toast(`⚡ New Check-In: ${event.studentName} (${event.studentId})`, "info");
+      }
+    },
+  });
 
   useEffect(() => {
-    fetchData();
-
     // Listen for global session creation events from sidebar
-    const handleSessionCreated = () => fetchData();
+    const handleSessionCreated = () => refreshNow();
     window.addEventListener("session-created", handleSessionCreated);
     return () => window.removeEventListener("session-created", handleSessionCreated);
-  }, [fetchData]);
+  }, [refreshNow]);
 
   const handleRefresh = () => {
     setIsRefreshing(true);
-    fetchData();
+    refreshNow();
   };
 
   const handleToggleStatus = async (
@@ -130,7 +139,7 @@ export default function DashboardPage() {
       const data = await res.json();
       if (res.ok) {
         toast(`Session status changed to ${nextStatus.toUpperCase()}`, "success");
-        fetchData();
+        refreshNow();
       } else {
         toast(data.error || "Failed to update session", "error");
       }
@@ -147,7 +156,7 @@ export default function DashboardPage() {
           <div className="flex items-center gap-2 text-xs font-semibold text-blue-600 dark:text-blue-400 uppercase tracking-wider">
             <span>Course Rep Command Center</span>
             <span>•</span>
-            <span>Real-Time Overview</span>
+            <LiveBadge isLive={isLiveConnected} lastUpdated={lastUpdated} />
           </div>
           <h1 className="text-2xl sm:text-3xl font-extrabold text-slate-900 dark:text-white tracking-tight mt-1">
             Attendance Dashboard

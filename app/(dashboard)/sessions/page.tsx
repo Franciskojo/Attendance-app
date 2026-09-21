@@ -18,7 +18,9 @@ import { StatusBadge } from "@/components/ui/StatusBadge";
 import { Button } from "@/components/ui/Button";
 import { QRCodeModal } from "@/components/ui/QRCodeModal";
 import { CreateSessionModal } from "@/components/sessions/CreateSessionModal";
+import { LiveBadge } from "@/components/ui/LiveBadge";
 import { useToast } from "@/components/ui/Toast";
+import { useLiveSync } from "@/hooks/useLiveSync";
 import { formatDate } from "@/lib/utils";
 
 interface SessionItem {
@@ -70,23 +72,16 @@ export default function SessionsPage() {
       }
     } catch (err) {
       console.error("Fetch sessions error:", err);
-      toast("Failed to load sessions", "error");
     } finally {
       setIsLoading(false);
       setIsRefreshing(false);
     }
-  }, [statusFilter, search, toast]);
+  }, [statusFilter, search]);
 
-  useEffect(() => {
-    if (!search) {
-      fetchSessions();
-      return;
-    }
-    const timer = setTimeout(() => {
-      fetchSessions();
-    }, 250);
-    return () => clearTimeout(timer);
-  }, [fetchSessions, search]);
+  // Live real-time sync
+  const { isLiveConnected, lastUpdated, refreshNow } = useLiveSync(fetchSessions, {
+    intervalMs: 3000,
+  });
 
   const handleToggleStatus = async (
     sessionId: string,
@@ -102,7 +97,7 @@ export default function SessionsPage() {
       const data = await res.json();
       if (res.ok) {
         toast(`Session is now ${nextStatus.toUpperCase()}`, "success");
-        fetchSessions();
+        refreshNow();
       } else {
         toast(data.error || "Failed to toggle status", "error");
       }
@@ -125,7 +120,7 @@ export default function SessionsPage() {
       const data = await res.json();
       if (res.ok) {
         toast("Session deleted", "success");
-        fetchSessions();
+        refreshNow();
       } else {
         toast(data.error || "Failed to delete session", "error");
       }
@@ -142,6 +137,8 @@ export default function SessionsPage() {
           <div className="flex items-center gap-2 text-xs font-semibold text-blue-600 dark:text-blue-400 uppercase tracking-wider">
             <CalendarCheck2 className="w-3.5 h-3.5" />
             <span>Attendance Manager</span>
+            <span>•</span>
+            <LiveBadge isLive={isLiveConnected} lastUpdated={lastUpdated} />
           </div>
           <h1 className="text-2xl sm:text-3xl font-extrabold text-slate-900 dark:text-white tracking-tight mt-1">
             Attendance Sessions
@@ -157,7 +154,7 @@ export default function SessionsPage() {
             size="sm"
             onClick={() => {
               setIsRefreshing(true);
-              fetchSessions();
+              refreshNow();
             }}
             isLoading={isRefreshing}
           >

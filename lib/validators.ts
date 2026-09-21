@@ -62,7 +62,36 @@ export const checkInSchema = z.object({
     .transform((val) => (val ? val.trim() : "")),
 });
 
+export const registerAndCheckInSchema = z.object({
+  sessionSlug: z.string().min(1, "Session slug is required"),
+  studentId: z
+    .string()
+    .min(2, "Student ID must be at least 2 characters")
+    .max(50, "Student ID is too long")
+    .transform((val) => val.trim().toUpperCase()),
+  fullName: z
+    .string()
+    .min(2, "Full name must be at least 2 characters")
+    .max(100, "Full name is too long")
+    .transform((val) => val.trim()),
+  email: z
+    .string()
+    .email("Invalid email format")
+    .optional()
+    .or(z.literal(""))
+    .transform((val) => (val ? val.trim().toLowerCase() : "")),
+  phone: z
+    .string()
+    .max(25, "Phone number is too long")
+    .optional()
+    .or(z.literal(""))
+    .transform((val) => (val ? val.trim() : "")),
+  cohort: z.string().optional().default("Cohort 1"),
+});
+
 export type LoginInput = z.infer<typeof loginSchema>;
 export type StudentInput = z.infer<typeof studentSchema>;
 export type SessionInput = z.infer<typeof sessionSchema>;
 export type CheckInInput = z.infer<typeof checkInSchema>;
+export type RegisterAndCheckInInput = z.infer<typeof registerAndCheckInSchema>;
+

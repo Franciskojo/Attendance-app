@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { getStudentsList } from "@/lib/data-service";
+import { getStudentByStudentId } from "@/lib/data-service";
 
 export async function GET(req: NextRequest) {
   try {
@@ -14,8 +14,7 @@ export async function GET(req: NextRequest) {
     }
 
     const studentId = rawStudentId.trim().toUpperCase();
-    const students = await getStudentsList();
-    const student = students.find((s) => s.studentId === studentId);
+    const student = await getStudentByStudentId(studentId);
 
     if (!student) {
       return NextResponse.json({

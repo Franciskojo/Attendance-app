@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useEffect, use } from "react";
+import React, { useState, useEffect, use, useRef } from "react";
 import confetti from "canvas-confetti";
 import {
   CheckCircle2,
@@ -10,9 +10,14 @@ import {
   Sparkles,
   ArrowRight,
   ShieldCheck,
-  User,
   Hash,
   Lock,
+  UserCheck,
+  UserPlus,
+  Mail,
+  Phone,
+  GraduationCap,
+  Info,
 } from "lucide-react";
 import { Button } from "@/components/ui/Button";
 import { StatusBadge } from "@/components/ui/StatusBadge";
@@ -35,10 +40,22 @@ export default function StudentCheckInPage({
   const resolvedParams = use(params);
   const sessionSlug = resolvedParams.slug;
 
+  // Mode: "checkin" or "register"
+  const [activeTab, setActiveTab] = useState<"checkin" | "register">("checkin");
+
+  // Check-In fields
   const [studentId, setStudentId] = useState("");
   const [fullName, setFullName] = useState("");
   const [isPreRegistered, setIsPreRegistered] = useState(false);
   const [isLookingUp, setIsLookingUp] = useState(false);
+  const [lookupAttempted, setLookupAttempted] = useState(false);
+
+  // Registration fields
+  const [regStudentId, setRegStudentId] = useState("");
+  const [regFullName, setRegFullName] = useState("");
+  const [regEmail, setRegEmail] = useState("");
+  const [regPhone, setRegPhone] = useState("");
+  const [regCohort, setRegCohort] = useState("Cohort 1");
 
   // Session Meta
   const [session, setSession] = useState<{
@@ -56,11 +73,14 @@ export default function StudentCheckInPage({
   const [errorMsg, setErrorMsg] = useState("");
   const [successData, setSuccessData] = useState<CheckInSuccessData | null>(null);
 
+  const debounceTimerRef = useRef<NodeJS.Timeout | null>(null);
+
   // Load saved studentId from localStorage
   useEffect(() => {
     const savedId = localStorage.getItem("attendance_student_id");
     if (savedId) {
       setStudentId(savedId);
+      setRegStudentId(savedId);
       lookupStudent(savedId);
     }
   }, []);
@@ -86,20 +106,29 @@ export default function StudentCheckInPage({
   }, [sessionSlug]);
 
   const lookupStudent = async (idToLookUp: string) => {
-    if (!idToLookUp || idToLookUp.trim().length < 3) return;
+    const cleanId = idToLookUp.trim().toUpperCase();
+    if (!cleanId || cleanId.length < 3) {
+      setIsPreRegistered(false);
+      setFullName("");
+      setLookupAttempted(false);
+      return;
+    }
+
     setIsLookingUp(true);
     try {
       const res = await fetch(
-        `/api/attendance/lookup?studentId=${encodeURIComponent(
-          idToLookUp.trim().toUpperCase()
-        )}`
+        `/api/attendance/lookup?studentId=${encodeURIComponent(cleanId)}`
       );
       const data = await res.json();
       if (data.success && data.exists && data.student) {
         setFullName(data.student.fullName);
         setIsPreRegistered(true);
+        setLookupAttempted(true);
+        setErrorMsg("");
       } else {
+        setFullName("");
         setIsPreRegistered(false);
+        setLookupAttempted(true);
       }
     } catch {
       // Ignore lookup network errors
@@ -111,25 +140,38 @@ export default function StudentCheckInPage({
   const handleIdChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const val = e.target.value.toUpperCase();
     setStudentId(val);
+    setRegStudentId(val);
     setErrorMsg("");
-    if (val.length >= 3) {
-      lookupStudent(val);
+
+    if (debounceTimerRef.current) {
+      clearTimeout(debounceTimerRef.current);
+    }
+
+    if (val.trim().length >= 3) {
+      debounceTimerRef.current = setTimeout(() => {
+        lookupStudent(val);
+      }, 300);
     } else {
       setIsPreRegistered(false);
+      setFullName("");
+      setLookupAttempted(false);
     }
   };
 
-  const handleSubmit = async (e: React.FormEvent) => {
+  const handleQuickCheckIn = async (e: React.FormEvent) => {
     e.preventDefault();
     setErrorMsg("");
 
-    if (!studentId.trim()) {
+    const cleanId = studentId.trim().toUpperCase();
+    if (!cleanId) {
       setErrorMsg("Please enter your Student ID");
       return;
     }
 
-    if (!isPreRegistered && !fullName.trim()) {
-      setErrorMsg("Please enter your Full Name for your first check-in");
+    if (!isPreRegistered) {
+      setErrorMsg(
+        `Student ID "${cleanId}" is not registered. Please switch to the "Register Student" tab below to complete your registration.`
+      );
       return;
     }
 
@@ -140,8 +182,7 @@ export default function StudentCheckInPage({
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           sessionSlug,
-          studentId: studentId.trim().toUpperCase(),
-          fullName: fullName.trim(),
+          studentId: cleanId,
         }),
       });
 
@@ -152,9 +193,8 @@ export default function StudentCheckInPage({
         return;
       }
 
-      // Save studentId to localStorage for fast future check-in
-      localStorage.setItem("attendance_student_id", studentId.trim().toUpperCase());
-
+      // Save studentId to localStorage
+      localStorage.setItem("attendance_student_id", cleanId);
       setSuccessData(data.data);
 
       // Trigger celebratory confetti effect
@@ -172,6 +212,74 @@ export default function StudentCheckInPage({
     } finally {
       setIsSubmitting(false);
     }
+  };
+
+  const handleRegisterAndCheckIn = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setErrorMsg("");
+
+    const cleanId = regStudentId.trim().toUpperCase();
+    const cleanName = regFullName.trim();
+
+    if (!cleanId || cleanId.length < 2) {
+      setErrorMsg("Please enter a valid Student ID");
+      return;
+    }
+
+    if (!cleanName || cleanName.length < 2) {
+      setErrorMsg("Please enter your Full Name");
+      return;
+    }
+
+    setIsSubmitting(true);
+    try {
+      const res = await fetch("/api/attendance/register-checkin", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          sessionSlug,
+          studentId: cleanId,
+          fullName: cleanName,
+          email: regEmail.trim(),
+          phone: regPhone.trim(),
+          cohort: regCohort.trim() || "Cohort 1",
+        }),
+      });
+
+      const data = await res.json();
+
+      if (!res.ok) {
+        setErrorMsg(data.error || "Registration failed");
+        return;
+      }
+
+      // Save studentId to localStorage
+      localStorage.setItem("attendance_student_id", cleanId);
+      setSuccessData(data.data);
+
+      // Trigger celebratory confetti effect
+      try {
+        confetti({
+          particleCount: 80,
+          spread: 70,
+          origin: { y: 0.6 },
+        });
+      } catch (cErr) {
+        console.log("Confetti trigger:", cErr);
+      }
+    } catch (err: unknown) {
+      setErrorMsg((err as Error).message || "An unexpected error occurred");
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
+  const switchToRegister = (initialId?: string) => {
+    if (initialId) {
+      setRegStudentId(initialId);
+    }
+    setActiveTab("register");
+    setErrorMsg("");
   };
 
   if (isLoadingSession) {
@@ -290,10 +398,10 @@ export default function StudentCheckInPage({
     );
   }
 
-  // Active Check-In Form Screen
+  // Active Check-In & Registration Screen
   return (
     <div className="min-h-screen flex flex-col justify-between items-center p-4 sm:p-6 bg-gradient-to-br from-slate-50 via-blue-50/30 to-slate-100 dark:from-slate-950 dark:via-[#0c1220] dark:to-slate-950">
-      {/* Top Brand */}
+      {/* Top Brand Header */}
       <div className="w-full max-w-md flex items-center justify-between py-2">
         <div className="flex items-center gap-2">
           <div className="w-8 h-8 rounded-xl bg-blue-600 flex items-center justify-center text-white font-bold text-sm shadow-md shadow-blue-500/20">
@@ -306,11 +414,11 @@ export default function StudentCheckInPage({
         <StatusBadge status="open" />
       </div>
 
-      {/* Main Check-In Card */}
+      {/* Main Card */}
       <div className="w-full max-w-md my-auto animate-fade-in">
         <div className="bg-white dark:bg-slate-900 rounded-3xl border border-slate-200 dark:border-slate-800 p-6 sm:p-8 shadow-xl">
-          {/* Session Header */}
-          <div className="mb-6 pb-5 border-b border-slate-100 dark:border-slate-800">
+          {/* Session Details */}
+          <div className="mb-5 pb-4 border-b border-slate-100 dark:border-slate-800">
             <div className="flex items-center gap-2 text-xs text-slate-400 font-medium mb-1">
               <Calendar className="w-3.5 h-3.5" />
               <span>{formatDate(session.date)}</span>
@@ -328,6 +436,41 @@ export default function StudentCheckInPage({
             )}
           </div>
 
+          {/* Mode Tabs */}
+          <div className="grid grid-cols-2 gap-1.5 p-1 bg-slate-100 dark:bg-slate-800 rounded-xl mb-5">
+            <button
+              type="button"
+              onClick={() => {
+                setActiveTab("checkin");
+                setErrorMsg("");
+              }}
+              className={`py-2 px-3 text-xs font-bold rounded-lg transition-all flex items-center justify-center gap-1.5 ${
+                activeTab === "checkin"
+                  ? "bg-white dark:bg-slate-900 text-blue-600 dark:text-blue-400 shadow-sm"
+                  : "text-slate-500 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white"
+              }`}
+            >
+              <UserCheck className="w-3.5 h-3.5" />
+              <span>Check-In</span>
+            </button>
+
+            <button
+              type="button"
+              onClick={() => {
+                setActiveTab("register");
+                setErrorMsg("");
+              }}
+              className={`py-2 px-3 text-xs font-bold rounded-lg transition-all flex items-center justify-center gap-1.5 ${
+                activeTab === "register"
+                  ? "bg-white dark:bg-slate-900 text-blue-600 dark:text-blue-400 shadow-sm"
+                  : "text-slate-500 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white"
+              }`}
+            >
+              <UserPlus className="w-3.5 h-3.5" />
+              <span>Register Student</span>
+            </button>
+          </div>
+
           {errorMsg && (
             <div className="mb-5 p-3.5 rounded-xl bg-rose-50 dark:bg-rose-950/60 border border-rose-200 dark:border-rose-900/60 text-rose-700 dark:text-rose-300 text-xs font-medium flex items-start gap-2">
               <AlertCircle className="w-4 h-4 shrink-0 mt-0.5" />
@@ -335,71 +478,242 @@ export default function StudentCheckInPage({
             </div>
           )}
 
-          <form onSubmit={handleSubmit} className="space-y-4">
-            {/* Student ID */}
-            <div>
-              <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 uppercase tracking-wider mb-1.5">
-                Student ID *
-              </label>
-              <div className="relative">
-                <Hash className="w-4 h-4 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2" />
-                <input
-                  type="text"
-                  required
-                  autoFocus
-                  placeholder="e.g. ENT-2026-001"
-                  value={studentId}
-                  onChange={handleIdChange}
-                  className="w-full pl-10 pr-4 py-3 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50/50 dark:bg-slate-800/60 text-slate-900 dark:text-white placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm font-mono uppercase tracking-wider font-bold"
-                />
-              </div>
-              {isLookingUp && (
-                <p className="text-[11px] text-blue-500 mt-1 font-medium">
-                  Checking student directory...
-                </p>
-              )}
-            </div>
+          {/* TAB 1: QUICK CHECK-IN */}
+          {activeTab === "checkin" && (
+            <form onSubmit={handleQuickCheckIn} className="space-y-4">
+              {/* Student ID Input */}
+              <div>
+                <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 uppercase tracking-wider mb-1.5">
+                  Student ID *
+                </label>
+                <div className="relative">
+                  <Hash className="w-4 h-4 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2" />
+                  <input
+                    type="text"
+                    required
+                    autoFocus
+                    placeholder="e.g. ZOBI-2026-001"
+                    value={studentId}
+                    onChange={handleIdChange}
+                    className="w-full pl-10 pr-4 py-3 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50/50 dark:bg-slate-800/60 text-slate-900 dark:text-white placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm font-mono uppercase tracking-wider font-bold"
+                  />
+                </div>
 
-            {/* Full Name */}
-            <div>
-              <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 uppercase tracking-wider mb-1.5">
-                Full Name {isPreRegistered ? "(Auto-Detected)" : "*"}
-              </label>
-              <div className="relative">
-                <User className="w-4 h-4 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2" />
-                <input
-                  type="text"
-                  required={!isPreRegistered}
-                  disabled={isPreRegistered}
-                  placeholder={isPreRegistered ? fullName : "Enter your Full Name"}
-                  value={fullName}
-                  onChange={(e) => setFullName(e.target.value)}
-                  className="w-full pl-10 pr-4 py-3 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50/50 dark:bg-slate-800/60 text-slate-900 dark:text-white placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm disabled:bg-emerald-50/50 dark:disabled:bg-emerald-950/30 disabled:text-emerald-800 dark:disabled:text-emerald-300 disabled:border-emerald-200 dark:disabled:border-emerald-900/60 font-semibold"
-                />
+                {isLookingUp && (
+                  <p className="text-[11px] text-blue-500 mt-1.5 font-medium flex items-center gap-1.5">
+                    <span className="w-3 h-3 border-2 border-blue-500 border-t-transparent rounded-full animate-spin inline-block" />
+                    Checking student directory...
+                  </p>
+                )}
               </div>
-              {isPreRegistered && (
-                <p className="text-[11px] text-emerald-600 dark:text-emerald-400 mt-1 font-medium flex items-center gap-1">
-                  <ShieldCheck className="w-3.5 h-3.5" />
-                  Recognized from cohort database
-                </p>
-              )}
-            </div>
 
-            <Button
-              type="submit"
-              variant="primary"
-              size="lg"
-              isLoading={isSubmitting}
-              className="w-full mt-3 font-bold shadow-lg shadow-blue-500/25"
-            >
-              Submit Attendance
-              <ArrowRight className="w-4 h-4 ml-1" />
-            </Button>
-          </form>
+              {/* Verified Student Badge Card */}
+              {isPreRegistered && fullName && (
+                <div className="p-4 rounded-2xl bg-emerald-50 dark:bg-emerald-950/40 border border-emerald-200 dark:border-emerald-800/60 animate-fade-in">
+                  <div className="flex items-center justify-between mb-1">
+                    <span className="text-[10px] font-bold uppercase tracking-wider text-emerald-700 dark:text-emerald-400 flex items-center gap-1">
+                      <ShieldCheck className="w-3.5 h-3.5" />
+                      Verified Cohort Member
+                    </span>
+                    <span className="text-[10px] font-mono text-emerald-600 dark:text-emerald-500 font-semibold">
+                      {studentId}
+                    </span>
+                  </div>
+                  <div className="text-base font-black text-emerald-950 dark:text-emerald-100 flex items-center gap-2 mt-0.5">
+                    <UserCheck className="w-5 h-5 text-emerald-600 dark:text-emerald-400" />
+                    <span>{fullName}</span>
+                  </div>
+                </div>
+              )}
+
+              {/* Unregistered Call-To-Action Card */}
+              {!isLookingUp && lookupAttempted && !isPreRegistered && studentId.trim().length >= 3 && (
+                <div className="p-4 rounded-2xl bg-blue-50 dark:bg-blue-950/40 border border-blue-200 dark:border-blue-800/60 text-xs animate-fade-in">
+                  <div className="flex items-start gap-2.5">
+                    <Info className="w-5 h-5 text-blue-600 dark:text-blue-400 shrink-0 mt-0.5" />
+                    <div className="space-y-2">
+                      <p className="font-bold text-blue-950 dark:text-blue-100">
+                        First-Time Check-In?
+                      </p>
+                      <p className="text-[11px] leading-relaxed text-blue-800 dark:text-blue-300">
+                        <span className="font-mono font-bold">{studentId}</span> is not registered in the directory yet. Complete your quick registration to record attendance now.
+                      </p>
+                      <button
+                        type="button"
+                        onClick={() => switchToRegister(studentId)}
+                        className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-blue-600 hover:bg-blue-700 text-white font-bold text-xs shadow-sm transition-colors"
+                      >
+                        <UserPlus className="w-3.5 h-3.5" />
+                        Complete Registration
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {/* Submit Button */}
+              <Button
+                type="submit"
+                variant="primary"
+                size="lg"
+                disabled={!isPreRegistered || isLookingUp}
+                isLoading={isSubmitting}
+                className={`w-full mt-2 font-bold shadow-lg transition-all ${
+                  isPreRegistered
+                    ? "shadow-blue-500/25 bg-blue-600 hover:bg-blue-700"
+                    : "opacity-60 cursor-not-allowed bg-slate-400"
+                }`}
+              >
+                {isLookingUp
+                  ? "Verifying..."
+                  : isPreRegistered
+                  ? "Submit Attendance"
+                  : "Enter Registered Student ID"}
+                {isPreRegistered && <ArrowRight className="w-4 h-4 ml-1" />}
+              </Button>
+
+              <div className="text-center pt-2">
+                <button
+                  type="button"
+                  onClick={() => switchToRegister(studentId)}
+                  className="text-xs text-slate-500 hover:text-blue-600 dark:hover:text-blue-400 font-medium transition-colors"
+                >
+                  New to this cohort? <span className="underline font-bold">Register as a new student</span>
+                </button>
+              </div>
+            </form>
+          )}
+
+          {/* TAB 2: FIRST-TIME REGISTRATION */}
+          {activeTab === "register" && (
+            <form onSubmit={handleRegisterAndCheckIn} className="space-y-3.5 animate-fade-in">
+              <div className="p-3 rounded-xl bg-blue-50/60 dark:bg-blue-950/30 border border-blue-100 dark:border-blue-900/40 text-[11px] text-blue-700 dark:text-blue-300 flex items-start gap-2 mb-1">
+                <Info className="w-4 h-4 text-blue-500 shrink-0 mt-0.5" />
+                <span>
+                  Registering will add you to the cohort directory and instantly record your attendance for this session.
+                </span>
+              </div>
+
+              {/* Student ID */}
+              <div>
+                <label className="block text-[11px] font-semibold text-slate-700 dark:text-slate-300 uppercase tracking-wider mb-1">
+                  Student ID *
+                </label>
+                <div className="relative">
+                  <Hash className="w-4 h-4 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2" />
+                  <input
+                    type="text"
+                    required
+                    placeholder="e.g. ZOBI-2026-002"
+                    value={regStudentId}
+                    onChange={(e) => setRegStudentId(e.target.value.toUpperCase())}
+                    className="w-full pl-10 pr-4 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50/50 dark:bg-slate-800/60 text-slate-900 dark:text-white placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500 text-xs font-mono uppercase tracking-wider font-bold"
+                  />
+                </div>
+              </div>
+
+              {/* Full Name */}
+              <div>
+                <label className="block text-[11px] font-semibold text-slate-700 dark:text-slate-300 uppercase tracking-wider mb-1">
+                  Full Name *
+                </label>
+                <div className="relative">
+                  <UserCheck className="w-4 h-4 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2" />
+                  <input
+                    type="text"
+                    required
+                    placeholder="e.g. Kojo John"
+                    value={regFullName}
+                    onChange={(e) => setRegFullName(e.target.value)}
+                    className="w-full pl-10 pr-4 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50/50 dark:bg-slate-800/60 text-slate-900 dark:text-white placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500 text-xs font-medium"
+                  />
+                </div>
+              </div>
+
+              {/* Contact Grid */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                {/* Email */}
+                <div>
+                  <label className="block text-[11px] font-semibold text-slate-700 dark:text-slate-300 uppercase tracking-wider mb-1">
+                    Email (Optional)
+                  </label>
+                  <div className="relative">
+                    <Mail className="w-4 h-4 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2" />
+                    <input
+                      type="email"
+                      placeholder="student@example.com"
+                      value={regEmail}
+                      onChange={(e) => setRegEmail(e.target.value)}
+                      className="w-full pl-10 pr-3 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50/50 dark:bg-slate-800/60 text-slate-900 dark:text-white placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500 text-xs"
+                    />
+                  </div>
+                </div>
+
+                {/* Phone */}
+                <div>
+                  <label className="block text-[11px] font-semibold text-slate-700 dark:text-slate-300 uppercase tracking-wider mb-1">
+                    Phone (Optional)
+                  </label>
+                  <div className="relative">
+                    <Phone className="w-4 h-4 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2" />
+                    <input
+                      type="tel"
+                      placeholder="+233..."
+                      value={regPhone}
+                      onChange={(e) => setRegPhone(e.target.value)}
+                      className="w-full pl-10 pr-3 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50/50 dark:bg-slate-800/60 text-slate-900 dark:text-white placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500 text-xs"
+                    />
+                  </div>
+                </div>
+              </div>
+
+              {/* Cohort */}
+              <div>
+                <label className="block text-[11px] font-semibold text-slate-700 dark:text-slate-300 uppercase tracking-wider mb-1">
+                  Cohort
+                </label>
+                <div className="relative">
+                  <GraduationCap className="w-4 h-4 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2" />
+                  <input
+                    type="text"
+                    placeholder="e.g. Cohort 1"
+                    value={regCohort}
+                    onChange={(e) => setRegCohort(e.target.value)}
+                    className="w-full pl-10 pr-3 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50/50 dark:bg-slate-800/60 text-slate-900 dark:text-white placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500 text-xs"
+                  />
+                </div>
+              </div>
+
+              {/* Register & Submit Attendance Button */}
+              <Button
+                type="submit"
+                variant="primary"
+                size="lg"
+                isLoading={isSubmitting}
+                className="w-full mt-3 font-bold shadow-lg shadow-blue-500/25 bg-blue-600 hover:bg-blue-700"
+              >
+                Register & Mark Attendance
+                <ArrowRight className="w-4 h-4 ml-1" />
+              </Button>
+
+              <div className="text-center pt-2">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setActiveTab("checkin");
+                    setErrorMsg("");
+                  }}
+                  className="text-xs text-slate-500 hover:text-blue-600 dark:hover:text-blue-400 font-medium transition-colors"
+                >
+                  Already registered? <span className="underline font-bold">Switch to Quick Check-In</span>
+                </button>
+              </div>
+            </form>
+          )}
         </div>
       </div>
 
-      {/* Mobile Footer */}
+      {/* Footer */}
       <footer className="text-center text-xs text-slate-400 py-3">
         Instant QR Attendance System • ZOBI
       </footer>
