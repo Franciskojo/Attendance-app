@@ -672,19 +672,22 @@ export async function submitCheckIn(data: {
     }
   }
 
-  const db = loadDatabase();
-  const existingInStore = db.records.find(
-    (r) =>
-      r.sessionId === session._id &&
-      r.studentId.toUpperCase() === normalizedStudentId
-  );
-
-  if (existingInStore) {
-    const err = new Error(
-      `Attendance already recorded for Student ID (${normalizedStudentId}). Duplicate check-ins are not permitted.`
+  // 3. Duplicate attendance check - file store fallback (only when MongoDB is not available)
+  if (!isMongo) {
+    const db = loadDatabase();
+    const existingInStore = db.records.find(
+      (r) =>
+        r.sessionId === session._id &&
+        r.studentId.toUpperCase() === normalizedStudentId
     );
-    (err as { isDuplicate?: boolean }).isDuplicate = true;
-    throw err;
+
+    if (existingInStore) {
+      const err = new Error(
+        `Attendance already recorded for Student ID (${normalizedStudentId}). Duplicate check-ins are not permitted.`
+      );
+      (err as { isDuplicate?: boolean }).isDuplicate = true;
+      throw err;
+    }
   }
 
   // 4. Determine late status (15 minutes grace period)
@@ -721,23 +724,24 @@ export async function submitCheckIn(data: {
         throw err;
       }
     }
+  } else {
+    // 6. Save to file store when MongoDB is not available (local dev fallback)
+    const newStoreRecord: StoredRecord = {
+      _id: recordId,
+      sessionId: session._id,
+      studentId: student.studentId,
+      studentName: resolvedName || student.fullName,
+      checkedInAt: now.toISOString(),
+      status,
+      deviceInfo: data.deviceInfo || "",
+      createdAt: now.toISOString(),
+      updatedAt: now.toISOString(),
+    };
+
+    const db = loadDatabase();
+    db.records.push(newStoreRecord);
+    saveDatabase(db);
   }
-
-  // 6. Mirror to JSON store for fallback
-  const newStoreRecord: StoredRecord = {
-    _id: recordId,
-    sessionId: session._id,
-    studentId: student.studentId,
-    studentName: resolvedName || student.fullName,
-    checkedInAt: now.toISOString(),
-    status,
-    deviceInfo: data.deviceInfo || "",
-    createdAt: now.toISOString(),
-    updatedAt: now.toISOString(),
-  };
-
-  db.records.push(newStoreRecord);
-  saveDatabase(db);
 
   broadcastLiveEvent({
     type: "CHECKIN",
@@ -763,6 +767,7 @@ export async function submitCheckIn(data: {
     sessionDate: session.date,
   };
 }
+
 
 export async function registerAndCheckIn(data: {
   sessionSlug: string;
