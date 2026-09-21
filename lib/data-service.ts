@@ -60,11 +60,14 @@ export async function getUserByEmail(email: string): Promise<StoredUser | null> 
     }
   }
 
-  const db = loadDatabase();
-  const user = db.users.find(
-    (u) => u.email.toLowerCase() === email.toLowerCase().trim()
-  );
-  return user || null;
+  if (!isMongo) {
+    const db = loadDatabase();
+    const user = db.users.find(
+      (u) => u.email.toLowerCase() === email.toLowerCase().trim()
+    );
+    return user || null;
+  }
+  return null;
 }
 
 // ==================== STUDENTS ====================
@@ -91,11 +94,14 @@ export async function getStudentByStudentId(studentId: string): Promise<StoredSt
     }
   }
 
-  const db = loadDatabase();
-  const student = db.students.find(
-    (s) => s.studentId.toUpperCase() === normalizedId
-  );
-  return student || null;
+  if (!isMongo) {
+    const db = loadDatabase();
+    const student = db.students.find(
+      (s) => s.studentId.toUpperCase() === normalizedId
+    );
+    return student || null;
+  }
+  return null;
 }
 
 export async function getStudentsList(search = "", cohort = "") {
@@ -135,32 +141,35 @@ export async function getStudentsList(search = "", cohort = "") {
     }
   }
 
-  const db = loadDatabase();
-  let students = [...db.students];
+  if (!isMongo) {
+    const db = loadDatabase();
+    let students = [...db.students];
 
-  if (search) {
-    const q = search.toLowerCase();
-    students = students.filter(
-      (s) =>
-        s.studentId.toLowerCase().includes(q) ||
-        s.fullName.toLowerCase().includes(q) ||
-        (s.email && s.email.toLowerCase().includes(q))
-    );
+    if (search) {
+      const q = search.toLowerCase();
+      students = students.filter(
+        (s) =>
+          s.studentId.toLowerCase().includes(q) ||
+          s.fullName.toLowerCase().includes(q) ||
+          (s.email && s.email.toLowerCase().includes(q))
+      );
+    }
+
+    if (cohort && cohort !== "all") {
+      students = students.filter((s) => s.cohort === cohort);
+    }
+
+    const recordMap = new Map<string, number>();
+    db.records.forEach((r) => {
+      recordMap.set(r.studentId, (recordMap.get(r.studentId) || 0) + 1);
+    });
+
+    return students.map((s) => ({
+      ...s,
+      attendanceCount: recordMap.get(s.studentId) || 0,
+    }));
   }
-
-  if (cohort && cohort !== "all") {
-    students = students.filter((s) => s.cohort === cohort);
-  }
-
-  const recordMap = new Map<string, number>();
-  db.records.forEach((r) => {
-    recordMap.set(r.studentId, (recordMap.get(r.studentId) || 0) + 1);
-  });
-
-  return students.map((s) => ({
-    ...s,
-    attendanceCount: recordMap.get(s.studentId) || 0,
-  }));
+  return [];
 }
 
 export async function createStudentData(data: {
@@ -195,33 +204,36 @@ export async function createStudentData(data: {
     }
   }
 
-  const db = loadDatabase();
-  const existing = db.students.find(
-    (s) => s.studentId.toUpperCase() === normalizedId
-  );
-  if (existing) throw new Error(`Student ID ${normalizedId} already exists`);
+  if (!isMongo) {
+    const db = loadDatabase();
+    const existing = db.students.find(
+      (s) => s.studentId.toUpperCase() === normalizedId
+    );
+    if (existing) throw new Error(`Student ID ${normalizedId} already exists`);
 
-  const now = new Date().toISOString();
-  const newStudent: StoredStudent = {
-    _id: `stu_${Date.now()}`,
-    studentId: normalizedId,
-    fullName: data.fullName.trim(),
-    email: data.email || "",
-    phone: data.phone || "",
-    cohort: data.cohort || "Cohort 1",
-    createdAt: now,
-    updatedAt: now,
-  };
+    const now = new Date().toISOString();
+    const newStudent: StoredStudent = {
+      _id: `stu_${Date.now()}`,
+      studentId: normalizedId,
+      fullName: data.fullName.trim(),
+      email: data.email || "",
+      phone: data.phone || "",
+      cohort: data.cohort || "Cohort 1",
+      createdAt: now,
+      updatedAt: now,
+    };
 
     db.students.push(newStudent);
-  saveDatabase(db);
-  broadcastLiveEvent({
-    type: "STUDENT_CREATED",
-    timestamp: now,
-    studentId: normalizedId,
-    studentName: data.fullName.trim(),
-  });
-  return newStudent;
+    saveDatabase(db);
+    broadcastLiveEvent({
+      type: "STUDENT_CREATED",
+      timestamp: now,
+      studentId: normalizedId,
+      studentName: data.fullName.trim(),
+    });
+    return newStudent;
+  }
+  throw new Error("Database unavailable");
 }
 
 export async function updateStudentData(id: string, data: Partial<StoredStudent>): Promise<StoredStudent> {
@@ -255,23 +267,26 @@ export async function updateStudentData(id: string, data: Partial<StoredStudent>
     }
   }
 
-  const db = loadDatabase();
-  const idx = db.students.findIndex((s) => s._id === id || s.studentId === id);
-  if (idx === -1) throw new Error("Student not found");
+  if (!isMongo) {
+    const db = loadDatabase();
+    const idx = db.students.findIndex((s) => s._id === id || s.studentId === id);
+    if (idx === -1) throw new Error("Student not found");
 
-  db.students[idx] = {
-    ...db.students[idx],
-    ...data,
-    updatedAt: new Date().toISOString(),
-  };
-  saveDatabase(db);
-  broadcastLiveEvent({
-    type: "STUDENT_CREATED",
-    timestamp: new Date().toISOString(),
-    studentId: db.students[idx].studentId,
-    studentName: db.students[idx].fullName,
-  });
-  return db.students[idx];
+    db.students[idx] = {
+      ...db.students[idx],
+      ...data,
+      updatedAt: new Date().toISOString(),
+    };
+    saveDatabase(db);
+    broadcastLiveEvent({
+      type: "STUDENT_CREATED",
+      timestamp: new Date().toISOString(),
+      studentId: db.students[idx].studentId,
+      studentName: db.students[idx].fullName,
+    });
+    return db.students[idx];
+  }
+  throw new Error("Student not found");
 }
 
 export async function deleteStudentData(id: string) {
@@ -293,14 +308,17 @@ export async function deleteStudentData(id: string) {
     }
   }
 
-  const db = loadDatabase();
-  db.students = db.students.filter((s) => s._id !== id && s.studentId !== id);
-  saveDatabase(db);
-  broadcastLiveEvent({
-    type: "STUDENT_DELETED",
-    timestamp: new Date().toISOString(),
-    studentId: id,
-  });
+  if (!isMongo) {
+    const db = loadDatabase();
+    db.students = db.students.filter((s) => s._id !== id && s.studentId !== id);
+    saveDatabase(db);
+    broadcastLiveEvent({
+      type: "STUDENT_DELETED",
+      timestamp: new Date().toISOString(),
+      studentId: id,
+    });
+    return true;
+  }
   return true;
 }
 
@@ -344,31 +362,34 @@ export async function getSessionsList(status = "all", search = "") {
     }
   }
 
-  const db = loadDatabase();
-  let sessions = [...db.sessions];
+  if (!isMongo) {
+    const db = loadDatabase();
+    let sessions = [...db.sessions];
 
-  if (status !== "all") sessions = sessions.filter((s) => s.status === status);
-  if (search) {
-    const q = search.toLowerCase();
-    sessions = sessions.filter((s) => s.title.toLowerCase().includes(q));
+    if (status !== "all") sessions = sessions.filter((s) => s.status === status);
+    if (search) {
+      const q = search.toLowerCase();
+      sessions = sessions.filter((s) => s.title.toLowerCase().includes(q));
+    }
+
+    const totalStudents = db.students.length;
+    const countMap = new Map<string, number>();
+    db.records.forEach((r) => {
+      countMap.set(r.sessionId, (countMap.get(r.sessionId) || 0) + 1);
+    });
+
+    return sessions.map((s) => {
+      const presentCount = countMap.get(s._id) || 0;
+      const rate = totalStudents > 0 ? Math.round((presentCount / totalStudents) * 100) : 0;
+      return {
+        ...s,
+        presentCount,
+        totalStudents,
+        attendanceRate: rate,
+      };
+    });
   }
-
-  const totalStudents = db.students.length;
-  const countMap = new Map<string, number>();
-  db.records.forEach((r) => {
-    countMap.set(r.sessionId, (countMap.get(r.sessionId) || 0) + 1);
-  });
-
-  return sessions.map((s) => {
-    const presentCount = countMap.get(s._id) || 0;
-    const rate = totalStudents > 0 ? Math.round((presentCount / totalStudents) * 100) : 0;
-    return {
-      ...s,
-      presentCount,
-      totalStudents,
-      attendanceRate: rate,
-    };
-  });
+  return [];
 }
 
 export async function getSessionDetails(idOrSlug: string) {
@@ -435,38 +456,41 @@ export async function getSessionDetails(idOrSlug: string) {
     }
   }
 
-  const db = loadDatabase();
-  const session = db.sessions.find(
-    (s) => s._id === idOrSlug || s.slug === idOrSlug
-  );
-  if (!session) return null;
+  if (!isMongo) {
+    const db = loadDatabase();
+    const session = db.sessions.find(
+      (s) => s._id === idOrSlug || s.slug === idOrSlug
+    );
+    if (!session) return null;
 
-  const records = db.records
-    .filter((r) => r.sessionId === session._id)
-    .sort((a, b) => new Date(b.checkedInAt).getTime() - new Date(a.checkedInAt).getTime());
+    const records = db.records
+      .filter((r) => r.sessionId === session._id)
+      .sort((a, b) => new Date(b.checkedInAt).getTime() - new Date(a.checkedInAt).getTime());
 
-  const checkedInIds = new Set(records.map((r) => r.studentId.toUpperCase()));
-  const absentStudents = db.students.filter((s) => !checkedInIds.has(s.studentId.toUpperCase()));
+    const checkedInIds = new Set(records.map((r) => r.studentId.toUpperCase()));
+    const absentStudents = db.students.filter((s) => !checkedInIds.has(s.studentId.toUpperCase()));
 
-  const totalStudents = db.students.length;
-  const presentCount = records.length;
-  const absentCount = Math.max(0, totalStudents - presentCount);
-  const lateCount = records.filter((r) => r.status === "late").length;
-  const attendanceRate =
-    totalStudents > 0 ? Math.round((presentCount / totalStudents) * 100) : 0;
+    const totalStudents = db.students.length;
+    const presentCount = records.length;
+    const absentCount = Math.max(0, totalStudents - presentCount);
+    const lateCount = records.filter((r) => r.status === "late").length;
+    const attendanceRate =
+      totalStudents > 0 ? Math.round((presentCount / totalStudents) * 100) : 0;
 
-  return {
-    ...session,
-    records,
-    absentStudents,
-    stats: {
-      totalStudents,
-      presentCount,
-      absentCount,
-      lateCount,
-      attendanceRate,
-    },
-  };
+    return {
+      ...session,
+      records,
+      absentStudents,
+      stats: {
+        totalStudents,
+        presentCount,
+        absentCount,
+        lateCount,
+        attendanceRate,
+      },
+    };
+  }
+  return null;
 }
 
 export async function createSessionData(data: {
@@ -501,25 +525,28 @@ export async function createSessionData(data: {
     }
   }
 
-  const db = loadDatabase();
-  const now = new Date().toISOString();
-  const newSession: StoredSession = {
-    _id: `sess_${Date.now()}`,
-    ...data,
-    slug,
-    createdAt: now,
-    updatedAt: now,
-  };
+  if (!isMongo) {
+    const db = loadDatabase();
+    const now = new Date().toISOString();
+    const newSession: StoredSession = {
+      _id: `sess_${Date.now()}`,
+      ...data,
+      slug,
+      createdAt: now,
+      updatedAt: now,
+    };
 
-  db.sessions.unshift(newSession);
-  saveDatabase(db);
-  broadcastLiveEvent({
-    type: "SESSION_CREATED",
-    timestamp: now,
-    sessionId: newSession._id,
-    sessionSlug: newSession.slug,
-  });
-  return newSession;
+    db.sessions.unshift(newSession);
+    saveDatabase(db);
+    broadcastLiveEvent({
+      type: "SESSION_CREATED",
+      timestamp: now,
+      sessionId: newSession._id,
+      sessionSlug: newSession.slug,
+    });
+    return newSession;
+  }
+  throw new Error("Database unavailable");
 }
 
 export async function updateSessionData(
@@ -561,25 +588,28 @@ export async function updateSessionData(
     }
   }
 
-  const db = loadDatabase();
-  const idx = db.sessions.findIndex(
-    (s) => s._id === idOrSlug || s.slug === idOrSlug
-  );
-  if (idx === -1) throw new Error("Session not found");
+  if (!isMongo) {
+    const db = loadDatabase();
+    const idx = db.sessions.findIndex(
+      (s) => s._id === idOrSlug || s.slug === idOrSlug
+    );
+    if (idx === -1) throw new Error("Session not found");
 
-  db.sessions[idx] = {
-    ...db.sessions[idx],
-    ...data,
-    updatedAt: new Date().toISOString(),
-  };
-  saveDatabase(db);
-  broadcastLiveEvent({
-    type: "SESSION_UPDATED",
-    timestamp: new Date().toISOString(),
-    sessionId: db.sessions[idx]._id,
-    sessionSlug: db.sessions[idx].slug,
-  });
-  return db.sessions[idx];
+    db.sessions[idx] = {
+      ...db.sessions[idx],
+      ...data,
+      updatedAt: new Date().toISOString(),
+    };
+    saveDatabase(db);
+    broadcastLiveEvent({
+      type: "SESSION_UPDATED",
+      timestamp: new Date().toISOString(),
+      sessionId: db.sessions[idx]._id,
+      sessionSlug: db.sessions[idx].slug,
+    });
+    return db.sessions[idx];
+  }
+  throw new Error("Session not found");
 }
 
 export async function deleteSessionData(idOrSlug: string) {
@@ -605,21 +635,24 @@ export async function deleteSessionData(idOrSlug: string) {
     }
   }
 
-  const db = loadDatabase();
-  const session = db.sessions.find(
-    (s) => s._id === idOrSlug || s.slug === idOrSlug
-  );
-  if (!session) throw new Error("Session not found");
+  if (!isMongo) {
+    const db = loadDatabase();
+    const session = db.sessions.find(
+      (s) => s._id === idOrSlug || s.slug === idOrSlug
+    );
+    if (!session) throw new Error("Session not found");
 
-  db.sessions = db.sessions.filter((s) => s._id !== session._id);
-  db.records = db.records.filter((r) => r.sessionId !== session._id);
-  saveDatabase(db);
-  broadcastLiveEvent({
-    type: "SESSION_DELETED",
-    timestamp: new Date().toISOString(),
-    sessionId: session._id,
-    sessionSlug: session.slug,
-  });
+    db.sessions = db.sessions.filter((s) => s._id !== session._id);
+    db.records = db.records.filter((r) => r.sessionId !== session._id);
+    saveDatabase(db);
+    broadcastLiveEvent({
+      type: "SESSION_DELETED",
+      timestamp: new Date().toISOString(),
+      sessionId: session._id,
+      sessionSlug: session.slug,
+    });
+    return true;
+  }
   return true;
 }
 
@@ -903,86 +936,98 @@ export async function getAnalyticsMetrics() {
     }
   }
 
-  const db = loadDatabase();
-  const totalStudents = db.students.length;
-  const totalSessions = db.sessions.length;
+  if (!isMongo) {
+    const db = loadDatabase();
+    const totalStudents = db.students.length;
+    const totalSessions = db.sessions.length;
 
-  const todayStr = new Date().toISOString().split("T")[0];
-  const todaySessions = db.sessions.filter((s) => s.date === todayStr);
-  const todaySessionIds = new Set(todaySessions.map((s) => s._id));
+    const todayStr = new Date().toISOString().split("T")[0];
+    const todaySessions = db.sessions.filter((s) => s.date === todayStr);
+    const todaySessionIds = new Set(todaySessions.map((s) => s._id));
 
-  const todayAttendanceCount = db.records.filter((r) =>
-    todaySessionIds.has(r.sessionId)
-  ).length;
+    const todayAttendanceCount = db.records.filter((r) =>
+      todaySessionIds.has(r.sessionId)
+    ).length;
 
-  const countMap = new Map<string, { total: number; late: number }>();
-  db.records.forEach((r) => {
-    const current = countMap.get(r.sessionId) || { total: 0, late: 0 };
-    current.total += 1;
-    if (r.status === "late") current.late += 1;
-    countMap.set(r.sessionId, current);
-  });
+    const countMap = new Map<string, { total: number; late: number }>();
+    db.records.forEach((r) => {
+      const current = countMap.get(r.sessionId) || { total: 0, late: 0 };
+      current.total += 1;
+      if (r.status === "late") current.late += 1;
+      countMap.set(r.sessionId, current);
+    });
 
-  let totalActualAttendance = 0;
-  const sessionTrends = db.sessions.map((s) => {
-    const stats = countMap.get(s._id) || { total: 0, late: 0 };
-    const present = stats.total;
-    const late = stats.late;
-    const absent = Math.max(0, totalStudents - present);
-    const rate = totalStudents > 0 ? Math.round((present / totalStudents) * 100) : 0;
-    totalActualAttendance += present;
+    let totalActualAttendance = 0;
+    const sessionTrends = db.sessions.map((s) => {
+      const stats = countMap.get(s._id) || { total: 0, late: 0 };
+      const present = stats.total;
+      const late = stats.late;
+      const absent = Math.max(0, totalStudents - present);
+      const rate = totalStudents > 0 ? Math.round((present / totalStudents) * 100) : 0;
+      totalActualAttendance += present;
+
+      return {
+        id: s._id,
+        name: s.title.length > 20 ? s.title.slice(0, 18) + "..." : s.title,
+        fullTitle: s.title,
+        date: s.date,
+        status: s.status,
+        present,
+        absent,
+        late,
+        attendanceRate: rate,
+      };
+    });
+
+    const totalPossible = totalSessions * totalStudents;
+    const overallAttendanceRate =
+      totalPossible > 0 ? Math.round((totalActualAttendance / totalPossible) * 100) : 0;
+
+    const studentCountMap = new Map<string, number>();
+    db.records.forEach((r) => {
+      studentCountMap.set(r.studentId, (studentCountMap.get(r.studentId) || 0) + 1);
+    });
+
+    const studentsWithRates = db.students.map((s) => {
+      const attended = studentCountMap.get(s.studentId) || 0;
+      const rate = totalSessions > 0 ? Math.round((attended / totalSessions) * 100) : 0;
+      return {
+        studentId: s.studentId,
+        fullName: s.fullName,
+        email: s.email,
+        attended,
+        totalSessions,
+        rate,
+      };
+    });
+
+    const topStudents = [...studentsWithRates]
+      .sort((a, b) => b.rate - a.rate)
+      .slice(0, 5);
+
+    const atRiskStudents = studentsWithRates.filter(
+      (s) => totalSessions >= 2 && s.rate < 75
+    );
 
     return {
-      id: s._id,
-      name: s.title.length > 20 ? s.title.slice(0, 18) + "..." : s.title,
-      fullTitle: s.title,
-      date: s.date,
-      status: s.status,
-      present,
-      absent,
-      late,
-      attendanceRate: rate,
-    };
-  });
-
-  const totalPossible = totalSessions * totalStudents;
-  const overallAttendanceRate =
-    totalPossible > 0 ? Math.round((totalActualAttendance / totalPossible) * 100) : 0;
-
-  const studentCountMap = new Map<string, number>();
-  db.records.forEach((r) => {
-    studentCountMap.set(r.studentId, (studentCountMap.get(r.studentId) || 0) + 1);
-  });
-
-  const studentsWithRates = db.students.map((s) => {
-    const attended = studentCountMap.get(s.studentId) || 0;
-    const rate = totalSessions > 0 ? Math.round((attended / totalSessions) * 100) : 0;
-    return {
-      studentId: s.studentId,
-      fullName: s.fullName,
-      email: s.email,
-      attended,
+      totalStudents,
       totalSessions,
-      rate,
+      todayAttendanceCount,
+      overallAttendanceRate,
+      sessionTrends,
+      topStudents,
+      atRiskStudents,
     };
-  });
-
-  const topStudents = [...studentsWithRates]
-    .sort((a, b) => b.rate - a.rate)
-    .slice(0, 5);
-
-  const atRiskStudents = studentsWithRates.filter(
-    (s) => totalSessions >= 2 && s.rate < 75
-  );
+  }
 
   return {
-    totalStudents,
-    totalSessions,
-    todayAttendanceCount,
-    overallAttendanceRate,
-    sessionTrends,
-    topStudents,
-    atRiskStudents,
+    totalStudents: 0,
+    totalSessions: 0,
+    todayAttendanceCount: 0,
+    overallAttendanceRate: 0,
+    sessionTrends: [],
+    topStudents: [],
+    atRiskStudents: [],
   };
 }
 
