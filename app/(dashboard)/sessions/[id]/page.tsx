@@ -16,10 +16,12 @@ import {
   Maximize2,
   CheckCircle2,
   AlertCircle,
+  Edit2,
 } from "lucide-react";
 import { StatusBadge } from "@/components/ui/StatusBadge";
 import { Button } from "@/components/ui/Button";
 import { QRCodeModal } from "@/components/ui/QRCodeModal";
+import { EditSessionModal } from "@/components/sessions/EditSessionModal";
 import { LiveBadge } from "@/components/ui/LiveBadge";
 import { useToast } from "@/components/ui/Toast";
 import { useLiveSync } from "@/hooks/useLiveSync";
@@ -76,6 +78,7 @@ export default function SessionDetailPage({
   const [search, setSearch] = useState("");
   const [activeTab, setActiveTab] = useState<"all" | "present" | "late" | "absent">("all");
   const [qrModalOpen, setQrModalOpen] = useState(false);
+  const [editModalOpen, setEditModalOpen] = useState(false);
 
   const fetchSessionDetails = useCallback(async () => {
     try {
@@ -217,6 +220,16 @@ export default function SessionDetailPage({
             >
               <RefreshCw className={`w-3.5 h-3.5 ${isRefreshing ? "animate-spin" : ""}`} />
               Refresh
+            </Button>
+
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => setEditModalOpen(true)}
+              className="gap-2"
+            >
+              <Edit2 className="w-4 h-4 text-blue-600 dark:text-blue-400" />
+              Edit Session
             </Button>
 
             <Button
@@ -441,7 +454,7 @@ export default function SessionDetailPage({
                       <td className="py-3.5 px-5 text-xs text-slate-600 dark:text-slate-300">
                         {formatTime(rec.checkedInAt)}
                         <span className="text-[11px] text-slate-400 ml-2">
-                          ({new Date(rec.checkedInAt).toLocaleDateString()})
+                          ({formatDate(rec.checkedInAt)})
                         </span>
                       </td>
                       <td className="py-3.5 px-5">
@@ -511,6 +524,14 @@ export default function SessionDetailPage({
         onClose={() => setQrModalOpen(false)}
         sessionTitle={session.title}
         sessionSlug={session.slug}
+      />
+
+      {/* Edit Session Modal */}
+      <EditSessionModal
+        isOpen={editModalOpen}
+        onClose={() => setEditModalOpen(false)}
+        session={session}
+        onSessionUpdated={fetchSessionDetails}
       />
     </div>
   );

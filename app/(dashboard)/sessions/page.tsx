@@ -13,11 +13,13 @@ import {
   ArrowRight,
   RefreshCw,
   Sparkles,
+  Edit2,
 } from "lucide-react";
 import { StatusBadge } from "@/components/ui/StatusBadge";
 import { Button } from "@/components/ui/Button";
 import { QRCodeModal } from "@/components/ui/QRCodeModal";
 import { CreateSessionModal } from "@/components/sessions/CreateSessionModal";
+import { EditSessionModal, SessionEditData } from "@/components/sessions/EditSessionModal";
 import { LiveBadge } from "@/components/ui/LiveBadge";
 import { useToast } from "@/components/ui/Toast";
 import { useLiveSync } from "@/hooks/useLiveSync";
@@ -58,6 +60,10 @@ export default function SessionsPage() {
 
   // Create Modal
   const [createModalOpen, setCreateModalOpen] = useState(false);
+
+  // Edit Modal
+  const [sessionToEdit, setSessionToEdit] = useState<SessionEditData | null>(null);
+  const [editModalOpen, setEditModalOpen] = useState(false);
 
   const fetchSessions = useCallback(async () => {
     try {
@@ -298,6 +304,17 @@ export default function SessionsPage() {
                       <QrCode className="w-4 h-4" />
                     </button>
 
+                    <button
+                      onClick={() => {
+                        setSessionToEdit(session);
+                        setEditModalOpen(true);
+                      }}
+                      title="Edit Session"
+                      className="p-2 rounded-lg text-slate-600 dark:text-slate-300 hover:text-blue-600 hover:bg-blue-50 dark:hover:bg-blue-950/50 transition-colors"
+                    >
+                      <Edit2 className="w-4 h-4" />
+                    </button>
+
                     <a
                       href={`/api/export/session/${session._id}`}
                       title="Export Attendance to Excel"
@@ -357,6 +374,17 @@ export default function SessionsPage() {
         isOpen={createModalOpen}
         onClose={() => setCreateModalOpen(false)}
         onSessionCreated={fetchSessions}
+      />
+
+      {/* Edit Session Modal */}
+      <EditSessionModal
+        isOpen={editModalOpen}
+        onClose={() => {
+          setEditModalOpen(false);
+          setSessionToEdit(null);
+        }}
+        session={sessionToEdit}
+        onSessionUpdated={fetchSessions}
       />
     </div>
   );

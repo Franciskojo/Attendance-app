@@ -15,7 +15,7 @@ export function useLiveSync(
 ) {
   const { onEvent, intervalMs = 3000, enabled = true } = options;
   const [isLiveConnected, setIsLiveConnected] = useState(false);
-  const [lastUpdated, setLastUpdated] = useState<Date>(new Date());
+  const [lastUpdated, setLastUpdated] = useState<Date | null>(null);
   
   const callbackRef = useRef(fetchCallback);
   callbackRef.current = fetchCallback;
