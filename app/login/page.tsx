@@ -3,7 +3,7 @@
 import React, { useState, useEffect, Suspense } from "react";
 import { signIn, useSession } from "next-auth/react";
 import { useRouter, useSearchParams } from "next/navigation";
-import { Lock, Mail, Sparkles, ShieldCheck, Database, ArrowRight, Loader2 } from "lucide-react";
+import { Lock, Mail, ShieldCheck, ArrowRight, Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/Button";
 import { ThemeToggle } from "@/components/ui/ThemeToggle";
 import { useToast } from "@/components/ui/Toast";
@@ -16,10 +16,9 @@ function LoginForm() {
 
   const callbackUrl = searchParams?.get("callbackUrl") || "/dashboard";
 
-  const [email, setEmail] = useState("admin@cohort.edu");
-  const [password, setPassword] = useState("Admin123!");
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
   const [isLoading, setIsLoading] = useState(false);
-  const [isSeeding, setIsSeeding] = useState(false);
   const [errorMsg, setErrorMsg] = useState("");
 
   // Automatically navigate if user already has an active session
@@ -58,25 +57,6 @@ function LoginForm() {
     }
   };
 
-  const handleSeedDatabase = async () => {
-    setIsSeeding(true);
-    try {
-      const res = await fetch("/api/seed", { method: "POST" });
-      const data = await res.json();
-      if (res.ok) {
-        toast("Database successfully seeded with demo cohort & sessions!", "success");
-        setEmail("admin@cohort.edu");
-        setPassword("Admin123!");
-      } else {
-        toast(data.error || "Failed to seed database", "error");
-      }
-    } catch {
-      toast("Error seeding database. Make sure MongoDB is running.", "error");
-    } finally {
-      setIsSeeding(false);
-    }
-  };
-
   if (status === "loading") {
     return (
       <div className="flex flex-col items-center justify-center p-12 text-slate-500 dark:text-slate-400">
@@ -96,9 +76,6 @@ function LoginForm() {
           <h1 className="text-2xl font-black text-slate-900 dark:text-white tracking-tight">
             Course Rep Portal
           </h1>
-          <p className="text-sm text-slate-500 dark:text-slate-400 mt-1.5">
-            Sign in to manage attendance sessions, QR codes & analytics
-          </p>
         </div>
 
         {errorMsg && (
@@ -110,14 +87,15 @@ function LoginForm() {
         <form onSubmit={handleSubmit} className="space-y-4">
           <div>
             <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 uppercase tracking-wider mb-1.5">
-              Admin Email
+              Email Address
             </label>
             <div className="relative">
               <Mail className="w-4 h-4 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2" />
               <input
                 type="email"
                 required
-                placeholder="admin@cohort.edu"
+                autoFocus
+                placeholder="Enter your email"
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
                 className="w-full pl-10 pr-4 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-white/80 dark:bg-slate-800/80 text-slate-900 dark:text-white placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm"
@@ -134,7 +112,7 @@ function LoginForm() {
               <input
                 type="password"
                 required
-                placeholder="••••••••"
+                placeholder="Enter your password"
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
                 className="w-full pl-10 pr-4 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-white/80 dark:bg-slate-800/80 text-slate-900 dark:text-white placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm"
@@ -147,35 +125,12 @@ function LoginForm() {
             variant="primary"
             size="lg"
             isLoading={isLoading}
-            className="w-full mt-2"
+            className="w-full mt-2 font-bold shadow-md shadow-blue-500/20"
           >
             Sign In to Dashboard
             <ArrowRight className="w-4 h-4 ml-1" />
           </Button>
         </form>
-
-        {/* Quick Demo & Seeder Helpers */}
-        <div className="mt-8 pt-6 border-t border-slate-200/80 dark:border-slate-800 flex flex-col gap-2.5">
-          <div className="flex items-center justify-between text-xs text-slate-500 dark:text-slate-400">
-            <span className="font-semibold flex items-center gap-1.5 text-blue-600 dark:text-blue-400">
-              <Sparkles className="w-3.5 h-3.5" />
-              Demo Credentials:
-            </span>
-            <span className="font-mono text-[11px] bg-slate-100 dark:bg-slate-800 px-2 py-0.5 rounded">
-              admin@cohort.edu / Admin123!
-            </span>
-          </div>
-
-          <button
-            type="button"
-            onClick={handleSeedDatabase}
-            disabled={isSeeding}
-            className="w-full flex items-center justify-center gap-2 py-2 px-3 rounded-xl bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-300 text-xs font-medium transition-colors disabled:opacity-50"
-          >
-            <Database className="w-3.5 h-3.5 text-indigo-500" />
-            {isSeeding ? "Seeding Database..." : "Seed Demo Database (20 Students, 3 Sessions)"}
-          </button>
-        </div>
       </div>
     </div>
   );
@@ -198,18 +153,20 @@ export default function LoginPage() {
       </div>
 
       {/* Main card wrapped in Suspense */}
-      <Suspense fallback={
-        <div className="w-full max-w-md mx-auto my-auto p-8 text-center text-slate-400">
-          <Loader2 className="w-8 h-8 animate-spin mx-auto text-blue-600 mb-2" />
-          Loading...
-        </div>
-      }>
+      <Suspense
+        fallback={
+          <div className="w-full max-w-md mx-auto my-auto p-8 text-center text-slate-400">
+            <Loader2 className="w-8 h-8 animate-spin mx-auto text-blue-600 mb-2" />
+            Loading...
+          </div>
+        }
+      >
         <LoginForm />
       </Suspense>
 
       {/* Footer */}
       <footer className="text-center text-xs text-slate-400 py-3">
-        ZOBI • Production-Ready SaaS Attendance System • Next.js 15 & React 19
+        ZOBI • Cohort Attendance Management System
       </footer>
     </div>
   );
