@@ -50,7 +50,7 @@ export default function Providers({ children }: { children: React.ReactNode }) {
   };
 
   return (
-    <SessionProvider>
+    <SessionProvider basePath="/api/auth">
       <ThemeContext.Provider value={{ theme, toggleTheme }}>
         <ToastProvider>
           {children}
