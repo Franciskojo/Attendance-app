@@ -211,7 +211,7 @@ export default function StudentCheckInPage({
           </p>
 
           <div className="mt-6 pt-6 border-t border-slate-100 dark:border-slate-800 text-xs text-slate-400">
-            Cohort Attendance System • AttendFlow
+            Cohort Attendance System • ZOBI
           </div>
         </div>
       </div>
@@ -297,10 +297,10 @@ export default function StudentCheckInPage({
       <div className="w-full max-w-md flex items-center justify-between py-2">
         <div className="flex items-center gap-2">
           <div className="w-8 h-8 rounded-xl bg-blue-600 flex items-center justify-center text-white font-bold text-sm shadow-md shadow-blue-500/20">
-            A
+            Z
           </div>
           <span className="font-bold text-base text-slate-900 dark:text-white">
-            AttendFlow
+            ZOBI
           </span>
         </div>
         <StatusBadge status="open" />
@@ -401,7 +401,7 @@ export default function StudentCheckInPage({
 
       {/* Mobile Footer */}
       <footer className="text-center text-xs text-slate-400 py-3">
-        Instant QR Attendance • Entrepreneurship Cohort
+        Instant QR Attendance System • ZOBI
       </footer>
     </div>
   );

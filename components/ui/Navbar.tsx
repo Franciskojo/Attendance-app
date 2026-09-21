@@ -27,14 +27,10 @@ export function Navbar({ onMobileMenuToggle }: NavbarProps) {
 
         <div className="flex items-center gap-2.5">
           <div className="w-8 h-8 rounded-xl bg-gradient-to-tr from-blue-600 to-indigo-500 flex items-center justify-center text-white font-bold text-sm shadow-sm shadow-blue-500/30">
-            A
+            Z
           </div>
           <span className="font-bold text-lg text-slate-900 dark:text-white tracking-tight hidden sm:inline">
-            AttendFlow
-          </span>
-          <span className="hidden md:inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-medium bg-blue-50 text-blue-700 dark:bg-blue-950/60 dark:text-blue-300 border border-blue-200/60 dark:border-blue-800/40">
-            <Sparkles className="w-3 h-3 text-blue-500" />
-            Entrepreneurship Cohort
+            ZOBI
           </span>
         </div>
       </div>

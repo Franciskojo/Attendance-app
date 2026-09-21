@@ -71,10 +71,10 @@ export default function LoginPage() {
       <div className="flex items-center justify-between max-w-6xl w-full mx-auto">
         <div className="flex items-center gap-2.5">
           <div className="w-9 h-9 rounded-xl bg-gradient-to-tr from-blue-600 to-indigo-600 flex items-center justify-center text-white font-extrabold text-base shadow-md shadow-blue-500/30">
-            A
+            Z
           </div>
           <span className="font-extrabold text-xl text-slate-900 dark:text-white tracking-tight">
-            AttendFlow
+            ZOBI
           </span>
         </div>
         <ThemeToggle />
@@ -175,7 +175,7 @@ export default function LoginPage() {
 
       {/* Footer */}
       <footer className="text-center text-xs text-slate-400 py-3">
-        AttendFlow • Production-Ready SaaS Attendance System • Next.js 15 & React 19
+        ZOBI • Production-Ready SaaS Attendance System • Next.js 15 & React 19
       </footer>
     </div>
   );

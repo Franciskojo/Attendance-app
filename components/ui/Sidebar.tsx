@@ -54,9 +54,9 @@ export function Sidebar({ isOpen, onClose, onOpenCreateSession }: SidebarProps) 
         <div className="flex items-center justify-between md:hidden px-2 pt-1 pb-3 border-b border-slate-200 dark:border-slate-800">
           <div className="flex items-center gap-2">
             <div className="w-7 h-7 rounded-lg bg-blue-600 flex items-center justify-center text-white font-bold text-xs">
-              A
+              Z
             </div>
-            <span className="font-bold text-slate-900 dark:text-white">AttendFlow</span>
+            <span className="font-bold text-slate-900 dark:text-white">ZOBI</span>
           </div>
           {onClose && (
             <button

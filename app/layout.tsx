@@ -3,8 +3,12 @@ import "./globals.css";
 import Providers from "@/components/Providers";
 
 export const metadata: Metadata = {
-  title: "AttendFlow | Production Attendance Management",
+  title: "ZOBI | Production Attendance Management",
   description: "Enterprise QR code attendance management system for cohorts, courses, and workshops.",
+  icons: {
+    icon: "/favicon.svg",
+    apple: "/apple-icon",
+  },
 };
 
 export default function RootLayout({
