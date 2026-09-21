@@ -9,6 +9,14 @@ const nextConfig: NextConfig = {
       (process.env.VERCEL_URL
         ? `https://${process.env.VERCEL_URL}`
         : "http://localhost:3000"),
+    // next-auth uses NEXTAUTH_URL_INTERNAL for server-side URL construction
+    // This prevents ERR_INVALID_URL during static prerendering when NEXTAUTH_URL is not set
+    NEXTAUTH_URL_INTERNAL:
+      process.env.NEXTAUTH_URL_INTERNAL ||
+      process.env.NEXTAUTH_URL ||
+      (process.env.VERCEL_URL
+        ? `https://${process.env.VERCEL_URL}`
+        : "http://localhost:3000"),
     NEXT_PUBLIC_APP_URL:
       process.env.NEXT_PUBLIC_APP_URL ||
       (process.env.VERCEL_URL
