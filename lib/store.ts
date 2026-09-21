@@ -5,6 +5,20 @@ import bcrypt from "bcryptjs";
 const DATA_DIR = path.join(process.cwd(), ".data");
 const DB_FILE = path.join(DATA_DIR, "attendance_db.json");
 
+/**
+ * Vercel and other serverless platforms have a read-only filesystem.
+ * The file-based store is only available for local development.
+ * In production, MONGODB_URI must be configured.
+ */
+function assertNotServerless(): void {
+  if (process.env.VERCEL || process.env.AWS_LAMBDA_FUNCTION_NAME || process.env.NETLIFY) {
+    throw new Error(
+      "File-based storage is not available on Vercel/serverless. " +
+      "Please configure the MONGODB_URI environment variable in your Vercel project settings."
+    );
+  }
+}
+
 export interface StoredUser {
   _id: string;
   name: string;
@@ -60,6 +74,7 @@ interface DatabaseSchema {
 }
 
 function ensureDataDir(): void {
+  assertNotServerless();
   if (!fs.existsSync(DATA_DIR)) {
     fs.mkdirSync(DATA_DIR, { recursive: true });
   }
